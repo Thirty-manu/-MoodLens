@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Smile, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabaseClient"; // Make sure this path is correct
 
 interface SignupFormProps {
   onSwitchToLogin: () => void;
@@ -22,7 +23,7 @@ export const SignupForm = ({ onSwitchToLogin, onSignupSuccess }: SignupFormProps
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleInputChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (field: keyof typeof formData) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({ ...prev, [field]: e.target.value }));
   };
 
@@ -40,15 +41,35 @@ export const SignupForm = ({ onSwitchToLogin, onSignupSuccess }: SignupFormProps
     
     setIsLoading(true);
     
-    // Simulate signup
-    setTimeout(() => {
-      setIsLoading(false);
+    const { email, password } = formData;
+
+    // Use Supabase auth.signUp to register the user
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: formData.name, // Store the full name as user metadata
+        },
+      },
+    });
+    
+    setIsLoading(false);
+
+    if (error) {
+      console.error("Signup error:", error);
       toast({
-        title: "Welcome to MoodTrack!",
-        description: "Your account has been created successfully.",
+        title: "Signup failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } else {
+      toast({
+        title: "Check your email",
+        description: "A verification link has been sent to your email address.",
       });
       onSignupSuccess();
-    }, 1000);
+    }
   };
 
   return (
