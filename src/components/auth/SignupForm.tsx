@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Smile, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/lib/supabaseClient"; // Make sure this path is correct
+import { supabase } from "@/lib/supabaseClient";
 
 interface SignupFormProps {
   onSwitchToLogin: () => void;
@@ -43,15 +43,9 @@ export const SignupForm = ({ onSwitchToLogin, onSignupSuccess }: SignupFormProps
     
     const { email, password } = formData;
 
-    // Use Supabase auth.signUp to register the user
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: {
-          full_name: formData.name, // Store the full name as user metadata
-        },
-      },
     });
     
     setIsLoading(false);
@@ -64,11 +58,38 @@ export const SignupForm = ({ onSwitchToLogin, onSignupSuccess }: SignupFormProps
         variant: "destructive"
       });
     } else {
-      toast({
-        title: "Check your email",
-        description: "A verification link has been sent to your email address.",
-      });
-      onSignupSuccess();
+      // Step 2: After successful signup, create a profile entry
+      if (data.user) {
+        const { error: profileError } = await supabase
+          .from('user_profiles')
+          .insert({ 
+            id: data.user.id, 
+            display_name: formData.name 
+          });
+
+        if (profileError) {
+          console.error("Profile creation error:", profileError);
+          // Still show success toast as the user is created, but log the profile error
+          toast({
+            title: "Signup successful, but profile could not be created.",
+            description: "Please contact support.",
+            variant: "destructive"
+          });
+          onSignupSuccess();
+        } else {
+          toast({
+            title: "Check your email",
+            description: "A verification link has been sent to your email address.",
+          });
+          onSignupSuccess();
+        }
+      } else {
+        toast({
+          title: "Signup successful",
+          description: "An unexpected error occurred. Please check your email for verification.",
+        });
+        onSignupSuccess();
+      }
     }
   };
 
