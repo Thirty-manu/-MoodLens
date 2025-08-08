@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Smile, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabaseClient"; // Import the supabase client
 
 interface LoginFormProps {
   onSwitchToSignup: () => void;
@@ -22,15 +23,28 @@ export const LoginForm = ({ onSwitchToSignup, onLoginSuccess }: LoginFormProps) 
     e.preventDefault();
     setIsLoading(true);
     
-    // Simulate login
-    setTimeout(() => {
-      setIsLoading(false);
+    // Use Supabase auth.signInWithPassword to log in the user
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    setIsLoading(false);
+
+    if (error) {
+      console.error("Login error:", error);
+      toast({
+        title: "Login failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } else {
       toast({
         title: "Welcome back!",
         description: "You've successfully logged in to MoodTrack.",
       });
       onLoginSuccess();
-    }, 1000);
+    }
   };
 
   return (
