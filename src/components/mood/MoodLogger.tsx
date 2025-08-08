@@ -5,17 +5,19 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabaseClient";
 
+// Define the moods with their corresponding database values
 const moods = [
-  { emoji: "😊", label: "Happy", value: "happy", color: "mood-happy" },
-  { emoji: "😢", label: "Sad", value: "sad", color: "mood-sad" },
-  { emoji: "😠", label: "Angry", value: "angry", color: "mood-angry" },
-  { emoji: "😌", label: "Calm", value: "calm", color: "mood-calm" },
-  { emoji: "🤩", label: "Excited", value: "excited", color: "mood-excited" },
+  { emoji: "😊", label: "Happy", value: "happy", mood_value: 4, color: "mood-happy" },
+  { emoji: "😢", label: "Sad", value: "sad", mood_value: 1, color: "mood-sad" },
+  { emoji: "😠", label: "Angry", value: "angry", mood_value: 2, color: "mood-angry" },
+  { emoji: "😌", label: "Calm", value: "calm", mood_value: 3, color: "mood-calm" },
+  { emoji: "🤩", label: "Excited", value: "excited", mood_value: 5, color: "mood-excited" },
 ];
 
 export const MoodLogger = () => {
-  const [selectedMood, setSelectedMood] = useState<string>("");
+  const [selectedMoodValue, setSelectedMoodValue] = useState<string>("");
   const [productivity, setProductivity] = useState([5]);
   const [energy, setEnergy] = useState([5]);
   const [notes, setNotes] = useState("");
@@ -23,6 +25,9 @@ export const MoodLogger = () => {
   const { toast } = useToast();
 
   const handleSubmit = async () => {
+    // Find the full mood object based on the selected value
+    const selectedMood = moods.find(m => m.value === selectedMoodValue);
+
     if (!selectedMood) {
       toast({
         title: "Please select a mood",
@@ -33,21 +38,57 @@ export const MoodLogger = () => {
     }
 
     setIsLoading(true);
-    
-    // Simulate saving
-    setTimeout(() => {
-      setIsLoading(false);
+
+    try {
+      // Get the current authenticated user from Supabase
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        toast({
+          title: "Authentication Error",
+          description: "Could not find user session. Please log in again.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Insert the user's data into the 'mood_logs' table
+      const { error } = await supabase
+        .from('mood_logs')
+        .insert({
+          user_id: user.id,
+          mood: selectedMood.label, // e.g., "Happy"
+          mood_value: selectedMood.mood_value, // e.g., 4
+          productivity: productivity[0],
+          energy: energy[0],
+          notes,
+        });
+
+      if (error) {
+        throw error;
+      }
+      
       toast({
         title: "Mood logged successfully!",
         description: "Your daily entry has been saved.",
       });
       
-      // Reset form
-      setSelectedMood("");
+      // Reset form on success
+      setSelectedMoodValue("");
       setProductivity([5]);
       setEnergy([5]);
       setNotes("");
-    }, 1000);
+
+    } catch (error: any) {
+      console.error("Error logging mood:", error);
+      toast({
+        title: "Failed to log mood",
+        description: error.message || "An unexpected error occurred.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -66,16 +107,16 @@ export const MoodLogger = () => {
             {moods.map((mood) => (
               <button
                 key={mood.value}
-                onClick={() => setSelectedMood(mood.value)}
+                onClick={() => setSelectedMoodValue(mood.value)}
                 className={`flex flex-col items-center gap-2 p-4 rounded-xl transition-all duration-300 hover:scale-105 ${
-                  selectedMood === mood.value
+                  selectedMoodValue === mood.value
                     ? `bg-${mood.color} shadow-mood`
                     : "bg-muted hover:bg-muted/80"
                 }`}
               >
                 <span className="text-3xl">{mood.emoji}</span>
                 <span className={`text-sm font-medium ${
-                  selectedMood === mood.value ? "text-white" : "text-muted-foreground"
+                  selectedMoodValue === mood.value ? "text-white" : "text-muted-foreground"
                 }`}>
                   {mood.label}
                 </span>
