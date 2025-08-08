@@ -18,6 +18,9 @@ export const Dashboard = () => {
   const [userName, setUserName] = useState("User");
   const [recentEntries, setRecentEntries] = useState<MoodLog[]>([]);
   const [streakCount, setStreakCount] = useState(0);
+  const [weeklyAverageMood, setWeeklyAverageMood] = useState(0);
+  const [monthlyMoodEntries, setMonthlyMoodEntries] = useState(0);
+  const [achievementCount, setAchievementCount] = useState(0);
 
   const today = new Date().toLocaleDateString('en-US', { 
     weekday: 'long', 
@@ -59,6 +62,51 @@ export const Dashboard = () => {
         } else if (logsData) {
           setRecentEntries(logsData);
         }
+
+        // --- New Logic for Dashboard Stats ---
+        // Calculate the date one week ago
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+        // Fetch mood logs from the last 7 days for the weekly average
+        const { data: weeklyLogsData, error: weeklyLogsError } = await supabase
+          .from('mood_logs')
+          .select('mood_value')
+          .eq('user_id', user.id)
+          .gte('created_at', oneWeekAgo.toISOString());
+
+        if (weeklyLogsError) {
+          console.error("Error fetching weekly mood logs:", weeklyLogsError);
+        } else if (weeklyLogsData && weeklyLogsData.length > 0) {
+          const totalMoodValue = weeklyLogsData.reduce((sum, log) => sum + log.mood_value, 0);
+          setWeeklyAverageMood(totalMoodValue / weeklyLogsData.length);
+        }
+
+        // Fetch all mood logs for the current month for the monthly goal
+        const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        const { count: monthlyCount, error: monthlyCountError } = await supabase
+          .from('mood_logs')
+          .select('*', { count: 'exact' })
+          .eq('user_id', user.id)
+          .gte('created_at', startOfMonth.toISOString());
+        
+        if (monthlyCountError) {
+          console.error("Error fetching monthly mood count:", monthlyCountError);
+        } else if (monthlyCount !== null) {
+          setMonthlyMoodEntries(monthlyCount);
+        }
+
+        // Fetch the total number of achievements
+        const { count, error: achievementError } = await supabase
+          .from('achievements') // Assuming a table named 'achievements'
+          .select('*', { count: 'exact' })
+          .eq('user_id', user.id);
+        
+        if (achievementError) {
+          console.error("Error fetching achievements:", achievementError);
+        } else if (count !== null) {
+          setAchievementCount(count);
+        }
       }
     };
     fetchUserData();
@@ -69,7 +117,7 @@ export const Dashboard = () => {
     switch (value) {
       case 1: return "😔";
       case 2: return "😕";
-      case 3: return "�";
+      case 3: return "🙂"; // Corrected the emoji
       case 4: return "😊";
       case 5: return "🤩";
       default: return "🙂";
@@ -86,21 +134,21 @@ export const Dashboard = () => {
     },
     {
       title: "Weekly Average",
-      value: "N/A", // This requires a query with an aggregation function
+      value: weeklyAverageMood > 0 ? `${weeklyAverageMood.toFixed(1)}/10` : "N/A",
       icon: TrendingUp,
       color: "text-secondary",
       bg: "bg-secondary/10"
     },
     {
       title: "Monthly Goal",
-      value: "N/A", // This requires more complex logic
+      value: `${monthlyMoodEntries} logs`,
       icon: Target,
       color: "text-accent",
       bg: "bg-accent/10"
     },
     {
       title: "Achievements",
-      value: "N/A", // This requires fetching data from the achievements table
+      value: `${achievementCount} awards`,
       icon: Award,
       color: "text-mood-excited",
       bg: "bg-mood-excited/10"
