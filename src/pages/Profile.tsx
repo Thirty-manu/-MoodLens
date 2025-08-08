@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,11 +18,12 @@ import {
   Award
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabaseClient";
 
 export const Profile = () => {
   const [profile, setProfile] = useState({
-    name: "Manu Thirty",
-    email: "serem695@gmail.com",
+    name: "",
+    email: "",
     timezone: "EAT"
   });
   
@@ -33,12 +34,42 @@ export const Profile = () => {
     insights: false
   });
   
+  const [streakCount, setStreakCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+
+  // useEffect to fetch user data on component mount
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (user) {
+        // Fetch user profile from the user_profiles table
+        const { data: profileData, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('display_name, streak_count')
+          .eq('id', user.id)
+          .single();
+        
+        if (profileError) {
+          console.error("Error fetching user profile:", profileError);
+        } else if (profileData) {
+          setProfile({
+            name: profileData.display_name || user.email?.split('@')[0] || "User",
+            email: user.email || "",
+            timezone: "EAT" // Keeping this hardcoded for now
+          });
+          setStreakCount(profileData.streak_count);
+        }
+      }
+    };
+    fetchUserData();
+  }, []);
 
   const handleProfileUpdate = async () => {
     setIsLoading(true);
     
+    // This is currently a simulated update; actual API call would go here
     setTimeout(() => {
       setIsLoading(false);
       toast({
@@ -64,9 +95,9 @@ export const Profile = () => {
   };
 
   const stats = [
-    { label: "Days Tracked", value: "127", icon: Calendar },
-    { label: "Average Mood", value: "7.4/10", icon: TrendingUp },
-    { label: "Achievements", value: "12", icon: Award }
+    { label: "Days Tracked", value: `${streakCount}`, icon: Calendar },
+    { label: "Average Mood", value: "N/A", icon: TrendingUp },
+    { label: "Achievements", value: "N/A", icon: Award }
   ];
 
   return (
@@ -90,8 +121,9 @@ export const Profile = () => {
               <h2 className="text-2xl font-semibold text-foreground">{profile.name}</h2>
               <p className="text-muted-foreground">{profile.email}</p>
               <div className="flex gap-2 mt-2">
+                {/* These badges are currently hardcoded placeholders */}
                 <Badge variant="secondary">Premium Member</Badge>
-                <Badge variant="outline">127 Days Tracking</Badge>
+                <Badge variant="outline">{streakCount} Days Tracking</Badge>
               </div>
             </div>
           </div>
@@ -144,6 +176,7 @@ export const Profile = () => {
                 type="email"
                 value={profile.email}
                 onChange={(e) => setProfile(prev => ({ ...prev, email: e.target.value }))}
+                disabled // Email is typically not editable
               />
             </div>
             
