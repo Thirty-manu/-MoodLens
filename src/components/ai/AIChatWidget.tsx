@@ -28,6 +28,9 @@ export const AIChatWidget = () => {
   const [isTyping, setIsTyping] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  
+  // Define the URL for your Supabase Edge Function.
+  const SUPABASE_FUNCTION_URL = "https://oqisybajiiosxvpiuisb.supabase.co/functions/v1/ai-worker";
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -35,31 +38,104 @@ export const AIChatWidget = () => {
     }
   }, [messages]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
-    const newMessage: Message = {
+    // Create a new user message and add it to the state immediately
+    const userMessage: Message = {
       id: Date.now().toString(),
       content: inputValue,
       role: "user",
       timestamp: new Date(),
     };
-
-    setMessages(prev => [...prev, newMessage]);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInputValue("");
     setIsTyping(true);
 
-    // Simulate AI response (replace with actual AI integration later)
-    setTimeout(() => {
-      const aiResponse: Message = {
+    // Prepare the conversation history for the API call
+    const chatHistory = updatedMessages.map(msg => ({
+      role: msg.role,
+      parts: [{ text: msg.content }]
+    }));
+    
+    // The payload now only contains the chat history to be sent to the Edge Function.
+    const payload = {
+      contents: chatHistory,
+    };
+
+    const maxRetries = 3;
+    let retries = 0;
+    let response;
+
+    // Implement exponential backoff for retries
+    while (retries < maxRetries) {
+      try {
+        response = await fetch(SUPABASE_FUNCTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        if (response.ok) {
+          // Success, break out of the retry loop
+          break;
+        } else if (response.status === 429 || response.status >= 500) {
+          // Retry on rate limit or server errors
+          retries++;
+          const delay = Math.pow(2, retries) * 1000; // 2s, 4s, 8s
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          // Don't retry on other client-side errors like 400
+          throw new Error(`HTTP error! Status: ${response.status} - ${response.statusText}`);
+        }
+      } catch (error) {
+        console.error("Error during fetch, retrying:", error);
+        retries++;
+        const delay = Math.pow(2, retries) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    // Process the final response (or the last failed response)
+    try {
+      if (!response || !response.ok) {
+        throw new Error(`Final attempt failed. HTTP error! Status: ${response?.status} - ${response?.statusText}`);
+      }
+
+      const result = await response.json();
+      const aiResponseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (aiResponseText) {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: aiResponseText,
+          role: "assistant",
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, aiMessage]);
+      } else {
+        console.error("Gemini API response was malformed:", result);
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: "I'm sorry, I couldn't generate a response. Please try again.",
+          role: "assistant",
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      console.error("Error calling Supabase Edge Function:", error);
+      const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: "Thanks for your message! I understand you're looking for support with your wellness journey. AI integration is coming soon to provide personalized insights and recommendations.",
+        content: `Error: ${error.message}. Please check your Supabase function and try again.`,
         role: "assistant",
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, aiResponse]);
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -152,7 +228,7 @@ export const AIChatWidget = () => {
                   )}
                 </div>
               </ScrollArea>
-
+              
               {/* Input */}
               <div className="p-4 border-t border-border">
                 <div className="flex gap-2">
